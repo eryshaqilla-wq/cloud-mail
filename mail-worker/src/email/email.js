@@ -104,7 +104,20 @@ export async function email(message, env, ctx) {
 		}
 
 		const toName = email.to.find(item => item.address === message.to)?.name || '';
-		const code = await aiService.extractCode({ env }, email, { aiCode, aiCodeFilter });
+
+		// 1. Coba ekstraksi via Regex cepat (0ms, 0 Neurons)
+		let code = extractRegexOTP(email.text, email.html);
+
+		// 2. Fallback AI: Jika Regex lokal gagal, panggil Workers AI Llama 3.1
+		if (!code) {
+			try {
+				code = await aiService.extractCode({ env }, email, { aiCode, aiCodeFilter });
+			} catch (e) {
+				console.error('AI Fallback Error: ', e);
+				code = '';
+			}
+		}
+
 		const fromAddress = email.from?.address || '';
 
 		const params = {
@@ -230,4 +243,44 @@ function checkBlock(blackSubjectStr, blackContentStr, blackFromStr, email) {
 
 	return false
 
+}
+
+const IGNORED_OTP_WORDS = new Set([
+	'VERIFY', 'CODE', 'EMAIL', 'PLEASE', 'ENTER', 'CLICK', 'BELOW', 'VALID', 'UNTIL',
+	'RESET', 'LOGIN', 'SECURE', 'ACCESS', 'YOUR', 'THIS', 'FROM', 'DEAR', 'USER',
+	'THANKS', 'TEAM', 'SUPPORT', 'SERVICE', 'ACCOUNT', 'NUMBER', 'CONFIRM'
+]);
+
+function extractRegexOTP(text, html) {
+	const content = (text || '') + ' ' + (html || '');
+	if (!content.trim()) return '';
+
+	// 1. Hyphenated pattern with keyword: e.g. code is 123-456 or ABC-DEF
+	const hyphenMatch = content.match(/(?:code|otp|kode|verifikasi|verification|pin)[^\d\n]{0,25}\b([a-zA-Z0-9]{3,4})-([a-zA-Z0-9]{3,4})\b/i);
+	if (hyphenMatch) return `${hyphenMatch[1]}${hyphenMatch[2]}`.toUpperCase();
+
+	// 2. Keyword with 4-8 alphanumeric code
+	const keywordMatch = content.match(/(?:code|otp|kode|verifikasi|verification|pin|password)[^\d\n]{0,25}\b([a-zA-Z0-9]{4,8})\b/i);
+	if (keywordMatch) {
+		const candidate = keywordMatch[1].trim();
+		if (!IGNORED_OTP_WORDS.has(candidate.toUpperCase())) {
+			if (/\d/.test(candidate) || candidate === candidate.toUpperCase()) {
+				return candidate;
+			}
+		}
+	}
+
+	// 3. Standalone 6-digit number
+	const sixDigit = content.match(/\b(\d{6})\b/);
+	if (sixDigit) return sixDigit[1];
+
+	// 4. Standalone 4 to 8 digit number
+	const numMatch = content.match(/\b(\d{4,8})\b/);
+	if (numMatch) return numMatch[1];
+
+	// 5. Standalone uppercase alphanumeric token with at least 1 digit
+	const alphaNum = content.match(/\b(?=[a-zA-Z0-9]*\d)(?=[a-zA-Z0-9]*[a-zA-Z])[a-zA-Z0-9]{4,8}\b/);
+	if (alphaNum) return alphaNum[0].toUpperCase();
+
+	return '';
 }
