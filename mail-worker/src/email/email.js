@@ -184,9 +184,11 @@ export async function email(message, env, ctx) {
 
 		}
 
-		//转发到TG
-		if (tgBotStatus === settingConst.tgBotStatus.OPEN && tgChatId) {
-			await telegramService.sendEmailToBot({ env }, emailRow)
+		// 转发到TG (Skip jika akun berstatus silent / mode hening untuk script otomasi)
+		const isSilent = account && (account.status === 2 || (account.name && account.name.includes('[silent]')));
+
+		if (tgBotStatus === settingConst.tgBotStatus.OPEN && tgChatId && !isSilent) {
+			await telegramService.sendEmailToBot({ env }, emailRow);
 		}
 
 		//转发到其他邮箱
