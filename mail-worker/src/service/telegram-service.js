@@ -161,18 +161,38 @@ const telegramService = {
 				});
 			};
 
+			const IGNORED_OTP_WORDS = new Set([
+				"VERIFY", "CODE", "EMAIL", "PLEASE", "ENTER", "CLICK", "BELOW", "VALID", "UNTIL",
+				"RESET", "LOGIN", "SECURE", "ACCESS", "YOUR", "THIS", "FROM", "DEAR", "USER",
+				"THANKS", "TEAM", "SUPPORT", "SERVICE", "ACCOUNT", "NUMBER", "CONFIRM"
+			]);
+
 			const extractOTP = (txt, codeField) => {
 				if (codeField && String(codeField).trim().length > 0) return String(codeField).trim();
 				if (!txt) return null;
-				const patterns = [
-					/(?:code|otp|kode|verifikasi|verification|pin)[^\d]{0,10}(\b\d{4,8}\b)/i,
-					/(\b\d{6}\b)/,
-					/(\b\d{4,8}\b)/
-				];
-				for (const r of patterns) {
-					const m = txt.match(r);
-					if (m && m[1]) return m[1];
+
+				const hyphenMatch = txt.match(/(?:code|otp|kode|verifikasi|verification|pin)[^\d\n]{0,25}\b([a-zA-Z0-9]{3,4})-([a-zA-Z0-9]{3,4})\b/i);
+				if (hyphenMatch) return `${hyphenMatch[1]}${hyphenMatch[2]}`.toUpperCase();
+
+				const keywordMatch = txt.match(/(?:code|otp|kode|verifikasi|verification|pin|password)[^\d\n]{0,25}\b([a-zA-Z0-9]{4,8})\b/i);
+				if (keywordMatch) {
+					const candidate = keywordMatch[1].trim();
+					if (!IGNORED_OTP_WORDS.has(candidate.toUpperCase())) {
+						if (/\d/.test(candidate) || candidate === candidate.toUpperCase()) {
+							return candidate;
+						}
+					}
 				}
+
+				const sixDigit = txt.match(/\b(\d{6})\b/);
+				if (sixDigit) return sixDigit[1];
+
+				const numMatch = txt.match(/\b(\d{4,8})\b/);
+				if (numMatch) return numMatch[1];
+
+				const alphaNum = txt.match(/\b(?=[a-zA-Z0-9]*\d)(?=[a-zA-Z0-9]*[a-zA-Z])[a-zA-Z0-9]{4,8}\b/);
+				if (alphaNum) return alphaNum[0].toUpperCase();
+
 				return null;
 			};
 
