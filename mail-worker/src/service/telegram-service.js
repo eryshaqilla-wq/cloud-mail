@@ -142,7 +142,10 @@ const telegramService = {
 				});
 			}
 
-			const domains = ['rrzzzrr.my.id', 'rzzr.my.id'];
+			let domains = ['rrzzzrr.my.id', 'rzzr.my.id', 'rzzr.de5.net', 'rzzr.ccwu.cc'];
+			if (Array.isArray(c.env.domain) && c.env.domain.length > 0) {
+				domains = c.env.domain;
+			}
 			const defaultDomain = domains[0];
 
 			const sendMsg = async (msgText, inlineKeyboard = null) => {
@@ -218,14 +221,15 @@ const telegramService = {
 
 			// 1. /start or menu
 			if (cleanText === '/start' || cleanText === '/menu' || cleanText === 'menu') {
+				const domainDesc = domains.map(d => `@${d}`).join(', ');
 				const msg = `🥷 <b>Selamat Datang di Kang Email!</b>\n\n` +
-					`Bot Resmi Cloud Mail Tuan Eso (@rrzzzrr.my.id & @rzzr.my.id).\n` +
+					`Bot Resmi Cloud Mail Tuan Eso (${domainDesc}).\n` +
 					`Semua aksi berjalan 100% serverless di awan (0% baterai & RAM HP).\n\n` +
 					`Silakan pilih menu cepat di bawah:`;
 
 				const keyboard = [
 					[
-						{ text: '📧 Buat Email Baru', callback_data: 'new:rrzzzrr.my.id' },
+						{ text: '📧 Buat Email Baru', callback_data: `new:${defaultDomain}` },
 						{ text: '📥 Cek 5 Inbox Terkini', callback_data: 'inbox:all' }
 					],
 					[
@@ -252,9 +256,13 @@ const telegramService = {
 				} else {
 					const parts = cleanText.split(/\s+/);
 					if (parts[1]) {
-						if (parts[1] === '1') targetDomain = domains[0];
-						else if (parts[1] === '2') targetDomain = domains[1];
-						else if (domains.includes(parts[1])) targetDomain = parts[1];
+						const num = parseInt(parts[1]);
+						if (!isNaN(num) && num >= 1 && num <= domains.length) {
+							targetDomain = domains[num - 1];
+						} else {
+							const matched = domains.find(d => d.includes(parts[1].toLowerCase()));
+							if (matched) targetDomain = matched;
+						}
 					}
 				}
 
@@ -265,7 +273,9 @@ const telegramService = {
 					'INSERT INTO account (email, name, user_id, status, is_del, sort, all_receive) VALUES (?, ?, 1, 0, 0, 0, 0)'
 				).bind(newEmail, prefix).run();
 
-				const otherDomain = targetDomain === domains[0] ? domains[1] : domains[0];
+				const curIdx = domains.indexOf(targetDomain);
+				const nextIdx = (curIdx !== -1 && curIdx + 1 < domains.length) ? curIdx + 1 : 0;
+				const otherDomain = domains[nextIdx];
 
 				const msg = `🥷 <b>Email Baru Siap Pakai:</b>\n\n` +
 					`<code>${newEmail}</code>\n` +
@@ -283,7 +293,7 @@ const telegramService = {
 					],
 					[
 						{ text: `🔄 Buat di @${otherDomain}`, callback_data: `new:${otherDomain}` },
-						{ text: '🗑️ Hapus', callback_data: `del:${newEmail}` }
+						{ text: '🌐 Pilih Domain', callback_data: 'domains' }
 					]
 				];
 				await sendMsg(msg, keyboard);
@@ -294,13 +304,24 @@ const telegramService = {
 			if (cleanText.startsWith('/custom')) {
 				const parts = cleanText.split(/\s+/);
 				if (!parts[1]) {
-					await sendMsg('ℹ️ <b>Format Perintah:</b>\n<code>/custom &lt;nama&gt; [1/2]</code>\n\nContoh: <code>/custom airdrop 1</code>');
+					let guide = 'ℹ️ <b>Format Perintah:</b>\n<code>/custom &lt;nama&gt; [nomor_domain]</code>\n\nPilihan domain:\n';
+					domains.forEach((d, idx) => {
+						guide += `${idx + 1}. <code>@${d}</code>\n`;
+					});
+					guide += `\nContoh: <code>/custom airdrop 1</code> atau <code>/custom bot 3</code>`;
+					await sendMsg(guide);
 					return c.text('OK');
 				}
 				const prefix = parts[1].toLowerCase().replace(/[^a-z0-9._-]/g, '');
 				let targetDomain = defaultDomain;
-				if (parts[2] === '2' || (parts[2] && parts[2].includes('rzzr'))) {
-					targetDomain = domains[1];
+				if (parts[2]) {
+					const num = parseInt(parts[2]);
+					if (!isNaN(num) && num >= 1 && num <= domains.length) {
+						targetDomain = domains[num - 1];
+					} else {
+						const matched = domains.find(d => d.includes(parts[2].toLowerCase()));
+						if (matched) targetDomain = matched;
+					}
 				}
 				const customEmail = `${prefix}@${targetDomain}`;
 
@@ -311,7 +332,6 @@ const telegramService = {
 					).bind(customEmail, prefix).run();
 				}
 
-				const otherDomain = targetDomain === domains[0] ? domains[1] : domains[0];
 				const msg = `🥷 <b>Custom Email Siap Pakai:</b>\n\n` +
 					`<code>${customEmail}</code>\n` +
 					`<i>(Ketuk alamat di atas untuk langsung menyalin)</i>\n\n` +
@@ -325,7 +345,7 @@ const telegramService = {
 						{ text: '🔑 Ambil OTP Langsung', callback_data: `otp:${customEmail}` }
 					],
 					[
-						{ text: `🔄 Buat di @${otherDomain}`, callback_data: `new:${otherDomain}` }
+						{ text: '🌐 Pilih Domain Lain', callback_data: 'domains' }
 					]
 				];
 				await sendMsg(msg, keyboard);
@@ -395,7 +415,7 @@ const telegramService = {
 							{ text: '🔄 Cek Lagi', callback_data: `inbox:${filterEmail || 'all'}` }
 						],
 						[
-							{ text: '📧 Buat Email Baru', callback_data: 'new:rrzzzrr.my.id' }
+							{ text: '📧 Buat Email Baru', callback_data: `new:${defaultDomain}` }
 						]
 					];
 					await sendMsg(notFoundMsg, keyboard);
@@ -429,7 +449,7 @@ const telegramService = {
 
 				keyboard.push([
 					{ text: '🔄 Segarkan', callback_data: `inbox:${filterEmail || 'all'}` },
-					{ text: '📧 Email Baru', callback_data: 'new:rrzzzrr.my.id' }
+					{ text: '📧 Email Baru', callback_data: `new:${defaultDomain}` }
 				]);
 
 				await sendMsg(msg, keyboard);
@@ -574,7 +594,7 @@ const telegramService = {
 
 				const keyboard = [
 					[
-						{ text: '📧 Buat Email Baru', callback_data: 'new:rrzzzrr.my.id' },
+						{ text: '📧 Buat Email Baru', callback_data: `new:${defaultDomain}` },
 						{ text: '📥 Cek Inbox', callback_data: 'inbox:all' }
 					]
 				];
@@ -600,17 +620,27 @@ const telegramService = {
 
 			// 10. /domains or domains
 			if (cleanText === '/domains' || cleanText === 'domains') {
-				const msg = `🌐 <b>Domain Cloud Mail Aktif:</b>\n\n` +
-					`1. <code>@${domains[0]}</code> <i>(Primary)</i>\n` +
-					`2. <code>@${domains[1]}</code> <i>(Secondary)</i>\n\n` +
-					`Keduanya siap menerima email masuk tanpa batas!`;
-				const keyboard = [
-					[
-						{ text: `📧 Buat di @${domains[0]}`, callback_data: `new:${domains[0]}` },
-						{ text: `📧 Buat di @${domains[1]}`, callback_data: `new:${domains[1]}` }
-					]
-				];
-				await sendMsg(msg, keyboard);
+				let listText = '';
+				const buttons = [];
+				for (let i = 0; i < domains.length; i += 2) {
+					const row = [];
+					const d1 = domains[i];
+					listText += `${i + 1}. <code>@${d1}</code>\n`;
+					row.push({ text: `📧 @${d1}`, callback_data: `new:${d1}` });
+					if (i + 1 < domains.length) {
+						const d2 = domains[i + 1];
+						listText += `${i + 2}. <code>@${d2}</code>\n`;
+						row.push({ text: `📧 @${d2}`, callback_data: `new:${d2}` });
+					}
+					buttons.push(row);
+				}
+
+				const msg = `🌐 <b>Domain Cloud Mail Aktif (${domains.length} Domain):</b>\n\n` +
+					listText + `\n` +
+					`Semua domain siap menerima email & OTP masuk tanpa batas! Ketuk tombol di bawah untuk membuat email baru:`;
+
+				buttons.push([{ text: '🔙 Kembali ke Menu', callback_data: '/menu' }]);
+				await sendMsg(msg, buttons);
 				return c.text('OK');
 			}
 
@@ -622,13 +652,16 @@ const telegramService = {
 				const msg = `📊 <b>Statistik Cloud Mail Tuan:</b>\n\n` +
 					`📬 Total Email Masuk : <b>${emailCount || 0}</b>\n` +
 					`📧 Mailbox Aktif      : <b>${accCount || 0}</b>\n` +
-					`🌐 Domain Terhubung   : <b>2 Domain</b>\n` +
+					`🌐 Domain Terhubung   : <b>${domains.length} Domain</b>\n` +
 					`⚡ Server             : Cloudflare Workers Edge (0% Beban HP)`;
 
 				const keyboard = [
 					[
 						{ text: '📥 Cek Inbox', callback_data: 'inbox:all' },
-						{ text: '📧 Buat Email', callback_data: 'new:rrzzzrr.my.id' }
+						{ text: '📧 Buat Email', callback_data: `new:${defaultDomain}` }
+					],
+					[
+						{ text: '🌐 Domain Aktif', callback_data: 'domains' }
 					]
 				];
 				await sendMsg(msg, keyboard);
